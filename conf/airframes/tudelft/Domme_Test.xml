@@ -1,0 +1,5 @@
+<module name="Domme_Test">
+  <file name="Domme_Test.c"/>
+
+  <periodic fun="Domme_Test" freq="10"/>
+</module>
