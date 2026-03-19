@@ -1,23 +1,24 @@
 # slightly modified from
 # https://gist.github.com/mesutpiskin/0ced27981487491403610324fea55038
+import warnings
 
 import numpy as np
 import cv2
 import glob
 import os
 
-size = (520, 240)
-
-def _load_image(path):
-    img = cv2.imread(path)
-    img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    return img
-
 def run_calibration():
+    def load_image(path):
+        img = cv2.imread(path)
+        img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        return img
+
     # path to images
-    folder_path = r"/home/ruben/Downloads/AE4317_2019_datasets/calibration_frontcam/20190121-163447"
+    folder_path = r"C:\Users\super\Downloads\AE4317_2019_datasets\AE4317_2019_datasets\calibration_frontcam\20190121-163447"
     image_files = sorted(glob.glob(os.path.join(folder_path, "*.jpg")))
     good_im = np.zeros(len(image_files), dtype=bool)
+    if len(image_files) == 0:
+        raise Exception("No images found in the specified folder. Please check the path")
 
     # Define the chess board rows and columns
     CHECKERBOARD = (6,9)
@@ -32,7 +33,7 @@ def run_calibration():
     i = 0
     for path in image_files[::]:
         # Load the image and convert it to gray scale
-        img = _load_image(path)
+        img = load_image(path)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         # Find the chess board corners
@@ -65,23 +66,25 @@ def run_calibration():
         calibration_flags,
         (cv2.TERM_CRITERIA_EPS+cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6))
 
+    Knew = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(K, D, (520, 240), np.eye(3),
+                                                                balance=0.0, new_size=(520, 240))
+    map1, map2 = cv2.fisheye.initUndistortRectifyMap(K, D, np.eye(3), Knew, (520, 240), cv2.CV_16SC2)
 
-    print(K)
-    print()
-    print(D)
-    Knew = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(K, D, size, np.eye(3),
-                                                                balance=0.0, new_size=size)
-    print()
-    print(Knew)
+    for_save = {
+        'K': K,
+        'D': D,
+        'Knew': Knew,
+    }
+    np.save('calibration_data.npy', for_save)
 
     for i in range(len(image_files)):
-        img = _load_image(image_files[i])
-        map1, map2 = cv2.fisheye.initUndistortRectifyMap(K, D, np.eye(3), K, size, cv2.CV_16SC2)
+        img = load_image(image_files[i])
         undistorted_img = cv2.remap(img, map1, map2, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
 
         cv2.imshow('Original Image', img)
         cv2.imshow('Undistort Image', undistorted_img)
         cv2.waitKey(100)
+
 
 K = np.array([
     [324.5960989 ,   0.        , 265.97140012],
@@ -99,9 +102,19 @@ Knew = np.array([
  [  0.     ,    293.74166585, 231.41389943],
  [  0.    ,       0.   ,        1.        ],
 ])
-map1, map2 = cv2.fisheye.initUndistortRectifyMap(K, D, np.eye(3), K, size, cv2.CV_16SC2)
+
+if os.path.exists('calibration_data.npy'):
+    correction_data = np.load('calibration_data.npy', allow_pickle=True).item()
+    K = correction_data['K']
+    D = correction_data['D']
+    Knew = correction_data['Knew']
+else:
+    warnings.warn('Calibration data not found, using hardcoded values. Run run_calibration() to generate calibration data.')
+
 fx, fy = Knew[0, 0], Knew[1, 1]
 cx, cy = Knew[0, 2], Knew[1, 2]
+map1, map2 = cv2.fisheye.initUndistortRectifyMap(K, D, np.eye(3), Knew, (520, 240), cv2.CV_16SC2)
+
 
 def undistort_image(image):
     undistorted_img = cv2.remap(image, map1, map2, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
@@ -114,12 +127,5 @@ def load_image(path):
         img = undistort_image(img)
     return img
 
-def get_img_time_from_filename(filename):
-    return float(os.path.basename(filename).replace(".jpg", "")) / 1000000.0
-
-def main() -> None:
+if __name__ == "__main__":
     run_calibration()
-    pass
-
-if __name__ == '__main__':
-    main()
